@@ -3903,8 +3903,14 @@ impl Reactor {
                 .collect();
             departed.sort_unstable();
             departed.dedup();
-            if let [departed] = departed[..] {
-                self.remap_space(departed, space);
+            match departed.as_slice() {
+                [] => {}
+                &[departed] => self.remap_space(departed, space),
+                several => debug!(
+                    ?several,
+                    ?space,
+                    "Returning display left from several desktops; not remapping any"
+                ),
             }
             for (window, _) in windows {
                 let source_frame = self
@@ -3913,7 +3919,9 @@ impl Reactor {
                     .map(|screen| screen.frame);
                 // Reassignment consumes the eviction and restores the workspace position;
                 // the transfer moves the window there and holds off native reconciliation.
-                self.reassign_window_to_authoritative_space(window, space, false);
+                self.reassign_window_to_authoritative_space(
+                    window, space, /* preserve_workspace_ordinal */ false,
+                );
                 outcome.absorb(self.request_window_transfer(window, space, source_frame));
             }
         }
