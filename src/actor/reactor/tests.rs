@@ -10153,6 +10153,50 @@ fn returning_display_takes_back_its_evicted_windows() {
 }
 
 #[test]
+fn returning_display_leaves_windows_placed_elsewhere_since() {
+    let mut settings = shared_settings();
+    settings.mode = crate::common::config::WorkspaceMode::PerDisplay;
+    settings.default_workspace_count = 6;
+    let (_, mut reactor, original, landing_space) = two_displays(settings);
+    let window = WindowId::new(1, 1);
+    let remembered = reactor.test_workspace_ids(original)[2];
+    assert!(reactor.assign_test_window_to_workspace(original, window, remembered));
+    reactor.send_layout_event(LayoutEvent::WindowAdded(original, window));
+    reactor.reassign_window_to_authoritative_space(window, landing_space, true);
+    assert_eq!(reactor.assigned_space_for_window_id(window), Some(landing_space));
+
+    // The user moves the window after the eviction, so the record no longer applies.
+    let chosen = *reactor
+        .test_workspace_ids(landing_space)
+        .iter()
+        .find(|&&workspace| reactor.state.windows.workspace_for_window(window) != Some(workspace))
+        .unwrap();
+    assert!(reactor.assign_test_window_to_workspace(landing_space, window, chosen));
+
+    let returned = reactor.space_state.screen_by_space(original).unwrap().display_uuid.clone();
+    let before: Vec<_> = reactor
+        .space_state
+        .screens
+        .iter()
+        .filter(|screen| screen.display_uuid != returned)
+        .cloned()
+        .collect();
+    reactor.return_evicted_windows(&before);
+
+    assert_eq!(reactor.state.windows.workspace_for_window(window), Some(chosen));
+    assert_eq!(
+        reactor
+            .state
+            .windows
+            .record(window)
+            .unwrap()
+            .pending_transfer()
+            .map(|op| op.requested_space),
+        None
+    );
+}
+
+#[test]
 fn returning_display_restores_the_evicted_arrangement() {
     // macOS may hand the returning display its old desktop or a new one.
     for returned in [SpaceId::new(1), SpaceId::new(3)] {

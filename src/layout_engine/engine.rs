@@ -1452,20 +1452,23 @@ impl LayoutEngine {
     }
 
     /// Windows a departure of `display` moved away that nothing has placed elsewhere since,
-    /// with the desktop each one left.
+    /// with the desktop each one left, ordered by window so they return in a stable order.
     pub(crate) fn evicted_from_display(
         &self,
         windows: &WindowStore,
         display: &str,
     ) -> Vec<(WindowId, SpaceId)> {
-        self.evicted
+        let mut evicted: Vec<_> = self
+            .evicted
             .iter()
-            .filter(|(wid, record)| {
+            .filter(|&(&wid, record)| {
                 record.display == display
-                    && windows.workspace_for_window(**wid) == Some(record.landed)
+                    && windows.workspace_for_window(wid) == Some(record.landed)
             })
             .map(|(&wid, record)| (wid, record.space))
-            .collect()
+            .collect();
+        evicted.sort_unstable_by_key(|&(wid, _)| wid);
+        evicted
     }
 
     fn restore_native_layout(
